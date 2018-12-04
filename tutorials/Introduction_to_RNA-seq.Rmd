@@ -1,0 +1,187 @@
+---
+title: "Introduction to RNA-seq"
+output: 
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+    version: 1.0
+subtitle: |
+  | ![](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/styling/cmoor_logo_notext.png){width=50%}
+  | [Get Help](https://c-moor.github.io/help/)
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+tutorial_options(exercise.completion=TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Welcome {.splashpage}
+
+![](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/styling/cmoor_logo_text_horizontal.png){width=100%}
+
+```{r}
+# Extract the tutorial version from the YAML data and store it so we can print it using inline r code below.  This can't be done directly inline because the code for extracting the YAML data uses backticks
+tv <- rmarkdown::metadata$output$`learnr::tutorial`$version
+```
+
+#### Learning Objectives:
+1. Compare and contrast the genome (DNA) and transcriptome (RNA)
+2. Explain what is being measured by RNA-seq
+3. Describe the steps involved in RNA-seq
+
+#### Authors:
+* Katherine Cox
+* Stephanie Coffman
+
+#### Version: `r tv`
+
+## What is RNA-seq?
+
+DNA contains the instructions for life, telling every organism how to survive, grow, and reproduce.  Individual instructions in DNA are called "**genes**".
+
+All humans have essentially the same DNA as each other - they all have the same genes, so they all have the same body structure and organs, and their bodies work in the same ways.  People may have slightly different versions ("alleles") of some genes (like the genes that control eye color or height) but they have the same total set of genes.  Scientists are still trying to discover and understand the complete set of human genes!
+
+Complex animals, like humans, mice, or flies are made up of many different types of **cells**, all doing different jobs.  Muscle cells, skin cells, and brain cells are all quite different from each other, even though they all have the same DNA.  This is because each cell only **expresses** part of its DNA - only some of the genes are "turned on".  For example, intestinal cells turn on genes for digesting food, and muscle cells turn on genes for converting the energy from sugar or fat into motion.  
+
+Cells can also change their gene expression in response to environmental cues. For example, virus-infected cells in humans can release a signaling molecule to warn nearby cells of the virus' presence. When the signal reaches neighboring cells, they will increase expression of genes required to fight off a virus. After the viral threat is gone, the cells' gene expression will return to normal. Such dynamic regulation of gene expression is necessary for both multicellular and unicellular organisms to respond to and interact with their environment.
+
+```{r DNA-and-gene-expression}
+quiz(caption="DNA and gene expression",
+  question("How does a human skin cell differ from a mouse skin cell?",
+    answer("They have different DNA with different genes", correct=TRUE),
+    answer("They have the same DNA with the same genes, but express different genes"),
+    answer("They have the same DNA  with the same genes, but with different versions of those genes (alleles)"),
+    allow_retry = TRUE
+  ),
+      question("How does a skin cell from one human differ from a skin cell from a different human?",
+    answer("They have different DNA with different genes"),
+    answer("They have the same DNA with the same genes, but express different genes"),
+    answer("They have the same DNA with the same genes, but with different versions of those genes (alleles)", correct=TRUE),
+    allow_retry = TRUE
+  ),
+  question("How does a human skin cell differ from a kidney cell from the same human?",
+    answer("They have different DNA with different genes"),
+    answer("They have the same DNA with the same genes, but express different genes", correct=TRUE),
+    answer("They have the same DNA with the same genes, but with different versions of those genes (alleles)"),
+    allow_retry = TRUE
+  )
+)
+```
+
+RNA-seq is a method for measuring which genes are being expressed (turned on), which can help us understand how cells do their jobs.  To express a gene, a cell makes copies of the gene's DNA sequence; these copies are made out of RNA.  This process is called **transcription**, and the RNAs are called **mRNAs** (messenger RNAs).  If we collect and read the mRNAs from a cell, we can figure out which genes were expressed in that cell.
+
+Depending on the scientific question being investigated, scientists can study expression of a single gene, a few genes, or all of the organism's genes. To look at the expression of all the genes at once, scientists study the **transcriptome** - the collection of mRNAs in a cell at a given point in time. The abundance of a particular mRNA tells us the level of expression for that gene. There are a few approaches to study the transcriptome, but we will focus on **RNA-seq**. RNA-seq uses Next-generation sequencing technology to sequence all the mRNAs in a sample.
+
+```{r what-is-RNA-seq}
+quiz(caption="RNA-seq",
+  question("What is the main goal of RNA-seq?",
+    answer("To measure which genes are present in a cell's DNA"),
+    answer("To measure which genes are expressed (active) in a cell", correct=TRUE),
+    answer("To measure which genes are mutated in a cell"),
+    answer("To measure which alleles (versions of genes) are present in a cell"),
+    allow_retry = TRUE,
+    random_answer_order = TRUE
+  )
+)
+```
+
+## Overview of an RNA-seq Project
+
+An RNA-seq experiment is similar to any other scientific experiment - first you must have a hypothesis or scientific question, then you must plan your experiment, collect the data, and draw conclusions from your data.
+
+* **Plan the experiment**: Before you start doing any work in the lab, you must do work **in your brain**.  Read about previous research, talk with other scientists, and think deeply about the experiment you want to carry out.
+* **Collect the data**: This is usually done **in a lab**, though for some experiments you may collect samples out in the field.  You must be very careful as you collect data to make sure you are treating all the samples the same and to prevent contamination of the samples.
+* **Analyze the data**: This is done **on a computer** and involves several steps.  You must evaluate whether your data is high quality and then use it to answer your scientific questions.
+
+
+## Plan the Experiment
+
+### Identify Question/Hypothesis
+The first step for any scientific project is to identify a scientific question to be addressed.  This may be in the form of a question or can be worded as a statement (hypothesis).  It should be based on the results of previous research, and should help extend knowledge.  It is important to clearly define the purpose of the experiment, so that we can make good decisions about how to carry it out.
+
+### Design Experiment
+Once a question has been identified, the next step is to design the experiment.  Experimental design is the process of figuring out how to answer the scientific question.  Some examples of important questions to answer include:
+
+* What samples do you need to compare?
+* How many of each sample do you need?
+* How will you collect the samples?
+* How will you prepare and sequence the samples?
+
+## Collect the Data
+
+Once the experiment has been designed, the data must be collected.  It's important to keep in mind that this is a fairly complex process, and things will sometimes go wrong.  The major steps in this process are:
+
+* **Prepare the organism** - This may involve things like putting them on a specific diet or housing them at a specific temperature
+* **Collect the biological sample** - For complex organisms, this usually involves either taking a tissue sample or performing a dissection.
+* **Extract the RNA** - Cells are full of all sorts of things that are not RNA that must be removed.
+* **Remove ribosomal RNA** - Most of the RNA in a cell is actually ribosomal RNA.  For most RNA-seq projects, it is best to remove the ribosomal RNA so it doesn't get in the way, since it's usually not relevant to the scientific question.
+* **Prepare for sequencing** - The RNA must go through several steps of preparation before it can be read by a sequencing machine.
+* **Sequence the RNA** - This is carried out automatically by a sequencing machine.
+
+## Analyze the Data
+
+### Align Reads to the Genome
+RNA-seq data from the sequencing machine is just a bunch of short sequences often 50-100 *nucleotides* long (a nucleotide is the name for a single "letter" in a DNA or RNA sequence).  We use computers to find out where in the whole genome those sequences came from (the human genome is approximately 3 *billion* nucleotides long!).  Once we know where the RNA came from, we can look at a list of known genes (and their locations) to see what gene that RNA came from.  A computer program can do this for each gene and count how many RNA sequences came from each gene in the whole genome.  For the RNA-seq data on C-MOOR, these first steps have already been taken care of.
+
+### Check Data Quality
+Sometimes things go wrong during data collection.  Before we start using the data to answer scientific questions, we need to make sure the data is high quality.  This generally involves checking for contamination, and checking for consistency between samples.  Common steps in RNAseq Quality Control include:
+
+* **Check data quantity** - Make sure you have enough high quality information to address the scientific question.
+* **Check sample consistency** - Samples from the same group (cell type, condition, treatment etc.) should be more similar to each other that they are to samples from the other group(s).
+* **Check the data for known genes** - Do the genes you already know something about behave as expected?
+* **Check for contamination from other tissues and cell types** - Especially if sample collection involved a difficult dissection, you may end up having RNA from other cells mixed in with the cells you want to analyze.
+* **Check for DNA contamination** - Sometimes not all the DNA is removed during the RNA extraction
+* **Check for ribosomal RNA** - Sometimes the removal of ribosomal RNA does not work as well as we would like
+
+### Answer Scientific Questions
+
+Once you are confident that the data is trustworthy, you can use it to address scientific questions.  There are many types of analyses that you can perform on the data, depending on the question you're trying to answer.  Here are some common types of analysis:
+
+* Differential expression (find genes that behave differently between samples)
+* Gene set analysis (find groups of genes that behave similarly to each other)
+* Comparisons with other datasets, such as ChIP-seq data (this lets you ask questions about how gene expression is connected to other cellular processes)
+
+## Check Your Understanding
+
+```{r steps-of-RNA-seq}
+quiz(caption="Steps in an RNA-seq experiment",
+  question("Which of the following are important parts of designing an RNA-seq experiment?",
+    answer("Decide how many samples you will need", correct=TRUE),
+    answer("Decide how you will collect the samples", correct=TRUE),
+    answer("Decide which samples you need to compare in order to answer the scientific question", correct=TRUE),
+    answer("Decide which genes are expressed in your samples"),
+    answer("Decide which samples are contaminated"),
+    allow_retry = TRUE,
+    random_answer_order = TRUE
+  ),
+  question("Which of the following correctly orders the steps of RNA-seq data collection?",
+    answer("Prepare the organism, Collect the biological sample, Extract and clean the RNA, Sequence the RNA", correct=TRUE),
+    answer("Prepare the organism, Collect the biological sample, Sequence the RNA, Extract and clean the RNA"),
+    answer("Collect the biological sample, Prepare the organism,  Extract and clean the RNA, Sequence the RNA,"),
+    answer("Collect the biological sample, Prepare the organism Sequence the RNA, Extract and clean the RNA"),
+    allow_retry = TRUE,
+    random_answer_order = TRUE
+  ),
+  question("Which of the following are common problems you should check for during RNA-seq data analysis?",
+    answer("Contamination from DNA or ribosomal RNA", correct=TRUE),
+    answer("Differences in gene expression between samples of the same type", correct=TRUE),
+    answer("Contamination from other samples or tissues", correct=TRUE),
+    answer("Mutations in the DNA"),
+    answer("Differences in gene expression between samples of the different types"),
+    allow_retry = TRUE,
+    random_answer_order = TRUE
+  )
+)
+```
+
+## Wrap-Up
+
+### Summary
+* RNA-seq is a valuable tool for understanding **gene expression**, and can help us find genes that are important for different biological processes, like development or disease.
+* RNA-seq uses sequencing technology to measure the relative amounts of different RNA sequences in a biological sample.
+* The first part of an RNA-seq experiment is **experimental design**, figuring out a good way to answer a scientific question.
+* The second part of an RNA-seq experiment is **data collection**.  It's important to be careful to make sure that differences between samples reflect the biological question you're interested in.
+* The final part of an RNA-seq experiment is **data analysis**, a multistep process of data processing, quality control, and making comparisons between samples.
