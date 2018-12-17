@@ -33,7 +33,7 @@ tv <- rmarkdown::metadata$output$`learnr::tutorial`$version
 3. Describe the steps involved in RNA-seq
 
 #### Authors:
-* Katherine Cox
+* [Katherine Cox](https://c-moor.github.io/portfolio/coxkatherine/)
 * Stephanie Coffman
 
 #### Version: `r tv`
@@ -170,7 +170,7 @@ quiz(caption="Steps in an RNA-seq experiment",
     answer("Differences in gene expression between samples of the same type", correct=TRUE),
     answer("Contamination from other samples or tissues", correct=TRUE),
     answer("Mutations in the DNA"),
-    answer("Differences in gene expression between samples of the different types"),
+    answer("Differences in gene expression between samples of different types"),
     allow_retry = TRUE,
     random_answer_order = TRUE
   )
@@ -185,3 +185,7 @@ quiz(caption="Steps in an RNA-seq experiment",
 * The first part of an RNA-seq experiment is **experimental design**, figuring out a good way to answer a scientific question.
 * The second part of an RNA-seq experiment is **data collection**.  It's important to be careful to make sure that differences between samples reflect the biological question you're interested in.
 * The final part of an RNA-seq experiment is **data analysis**, a multistep process of data processing, quality control, and making comparisons between samples.
+
+#### Additional Resources
+* [RNA-seqlopedia](https://rnaseq.uoregon.edu) provides a more detailed discussion of the steps of RNA-seq, including Experimental Design, Sample Preparation, and Analysis
+ 
