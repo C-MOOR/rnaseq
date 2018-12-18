@@ -1,0 +1,5 @@
+sample	filename	condition
+am10	SRR891610_head.htseq	a1
+am11	SRR891611_head.htseq	a1
+am13	SRR891613_head.htseq	a2_3
+am14	SRR891614_head.htseq	a2_3
