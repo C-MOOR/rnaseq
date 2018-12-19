@@ -1,0 +1,710 @@
+---
+title: "Differential Expression with DESeq2"
+output: 
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+    version: 1.0
+subtitle: |
+  | ![](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/styling/cmoor_logo_notext.png){width=50%}
+  | [Get Help](https://c-moor.github.io/help/)
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+tutorial_options(exercise.completion=TRUE)
+knitr::opts_chunk$set(echo = FALSE)
+
+library("DESeq2")
+library("tidyverse")
+
+formatDESeq2Results <- function( x ) { 
+  df <- as.data.frame(x)
+  df <- data.frame(rownames(df), df)
+  colnames(df) <- c("GeneID", colnames(df)[-1])
+  rownames(df) <- c()
+  return(df)
+}
+
+# Make a little test dataset for learners to run commands on, so the commands run quickly
+dir.create("midgut_tiny")
+download.file("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut_tiny/SRR891610_head.htseq", "midgut_tiny/SRR891610_head.htseq")
+download.file("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut_tiny/SRR891611_head.htseq", "midgut_tiny/SRR891611_head.htseq")
+download.file("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut_tiny/SRR891613_head.htseq", "midgut_tiny/SRR891613_head.htseq")
+download.file("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut_tiny/SRR891614_head.htseq", "midgut_tiny/SRR891614_head.htseq")
+midgut_tiny_tsv <- read.table("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut_tiny.tsv", header=TRUE)
+midgut_tiny <- DESeqDataSetFromHTSeqCount(midgut_tiny_tsv, "midgut_tiny", design = ~condition)
+
+# Get the real dataset
+download.file( "https://drive.google.com/uc?id=13wOmFWPOdmDRLFIaM_8Vu4aJKX99kXEh", "data.tgz", mode="wb" )
+untar( "data.tgz" )
+midgut_tsv <- read.table("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut.tsv", header=TRUE)
+midgut <- DESeqDataSetFromHTSeqCount(midgut_tsv, "data/", design = ~condition)
+midgut <- DESeq(midgut)
+
+```
+
+
+## Welcome {.splashpage}
+
+![](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/styling/cmoor_logo_text_horizontal.png){width=100%}
+
+```{r}
+# Extract the tutorial version from the YAML data and store it so we can print it using inline r code below.  This can't be done directly inline because the code for extracting the YAML data uses backticks
+tv <- rmarkdown::metadata$output$`learnr::tutorial`$version
+```
+
+#### Learning Objectives:
+1. Calculate differential expression statistics using DESeq2
+2. Extract DESeq2 results and reformat them to be more useful for future analysis
+3. Understand the columns and rows of DESeq2 results
+4. Use R to extract results for a single gene of interest
+5. Use R to create a list of significantly different genes for different significance cutoffs.
+
+#### Authors:
+* [Katherine Cox](https://c-moor.github.io/portfolio/coxkatherine/)
+* Stephanie Coffman
+* Frederick Tan
+
+#### Version: `r tv`
+
+## Introduction
+
+Previously, we looked at a single HTSeq file, which provides gene expression data for one sample. Let's consider an example from Marianes and Spradling et al. Recall that they compared many RNA-seq samples from different regions of the midgut in *Drosophilia melanogaster* (Figure 2A, from [Marianes and Spradling 2013](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3755342/))
+
+![Figure 2A](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/images/elife-00886-fig2A.jpg){ width=100% }
+**Figure 2A** Diagram illustrating the different RNA-seq libraries constructed by Marianes and Spradling from the Drosophila midgut.
+
+From an HTSeq file, we can learn that the *lab* gene is highly expressed in the Cu region of the *Drosophlia* midgut. But, does that mean the *lab* gene is important for cells of the Cu region? Maybe, maybe not. It could be that *lab* is expressed at that level across the whole midgut or possible even the whole fly. To really answer questions about gene expression, we need to compare more than one sample with each other. Which samples are compared depends on the scientific question being asked. In terms of the *lab* gene, Marianes and Spradling analyzed its expression in each region of the gut and determined that it is localized to the Cu region (Figure 2D, from [Marianes and Spradling 2013](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3755342/)). This is a clue that *lab* is important in the Cu region.
+
+![Figure 2D](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/images/elife-00886-fig2D.jpg){ width=100% }
+**Figure 2D** Analysis of seven genes and their gene expression across each region of the gut.
+
+### Expression of the *Ptth* and *Ace* genes in the Cu region
+
+The following plot shows expression of the *Ptth* and *Ace* genes in the Cu region.
+
+```{r}
+df <- data.frame(counts(midgut)["FBgn0013323",], counts(midgut)["FBgn0000024",], midgut_tsv$condition)
+colnames(df) <- c("Ptth", "Ace", "region")
+df <- df[16:18,]
+
+ggplot( tidyr::gather( df, key=key, value=value, 1:2 ) ) +
+  geom_bar( aes( region, value, fill=key ), stat="identity", position="dodge" )
+```
+
+```{r ptth-ace-expression-quiz-1}
+question("From the graph above, what can you conclude about Ptth and Ace gene expression?",
+    answer("Ptth is expressed more highly in the Cu region than in other midgut regions"),
+    answer("Ace is expressed more highly in the Cu region than in other midgut regions"),
+    answer("Ptth is expressed more highly than Ace in the Cu region"),
+    answer("Ace is expressed more highly than Ptth in the Cu region", correct=TRUE),
+    answer("Ace is expressed in many regions"),
+    answer("Ptth is expressed in many regions"),
+    allow_retry=TRUE
+   )
+```
+
+#### Thought question:  From these data, would you be more interested in investigating the *Ace* gene or the *Ptth* gene in the Cu region?
+
+### Expression of the *Ptth* and *Ace* genes across all regions
+
+The following plot shows expression of the *Ptth* and *Ace* genes across all regions.
+
+```{r}
+df <- data.frame(counts(midgut)["FBgn0013323",], counts(midgut)["FBgn0000024",], midgut_tsv$condition)
+colnames(df) <- c("Ptth", "Ace", "region")
+df <- df[10:30,]
+df$region <- fct_relevel( factor( df$region ), "a1", "a2_3", "Cu", "LFCFe", "Fe", "p1", "p2_4" )
+
+ggplot( tidyr::gather( df, key=key, value=value, 1:2 ) ) +
+  geom_bar( aes( region, value, fill=key ), stat="identity", position="dodge" )
+```
+
+```{r ptth-ace-expression-quiz-2}
+question("From the graph above, what can you conclude about Ptth and Ace gene expression?  HINT: There are four correct responses - you must select them all to get the correct answer.",
+    answer("Ptth is expressed more highly in the Cu region than in other midgut regions", correct = TRUE),
+    answer("Ace is expressed more highly in the Cu region than in other midgut regions"),
+    answer("Ptth is expressed more highly than Ace in the Cu region"),
+    answer("Ace is expressed more highly than Ptth in the Cu region", correct=TRUE),
+    answer("Ace is expressed in many regions", correct=TRUE),
+    answer("Ptth is expressed in many regions", correct=TRUE),
+    allow_retry=TRUE
+   )
+```
+
+#### Thought question:  From these data, would you be more interested in investigating the *Ace* gene or the *Ptth* gene in the Cu region?
+
+## R cheat sheet
+
+Here is a reminder of some basic R commands, for your convenience:
+
+* `head(df)` prints the first few rows of the dataframe named `df`
+* `tail(df)` prints the last few rows of the dataframe named `df`
+* `summary(df)` prints some summary statistics for each column of the dataframe named `df`, such as min, mean, median, and max for numeric columns
+* `log(v)`, `log(v, 10)` if `v` is a vector of numbers, these will return a vector containining the natural log or log10 of the items in `v`
+* `plot(x,y)` plots the vector `x` against the vector `y`. Usually this will be a scatterplot, but R will try to guess a sensible plot if you give it data that doesn't fit in a scatter plot
+* `hist(v)` is a specialized version of plot, which will generate a histogram of the items in the vector `v`
+
+You can "filter" a dataframe (pick out only some of the rows and columns) using the `filter()` command from the dplyr package.  Some examples:
+
+* `df$c` finds the column named `c` from at dataframe named `df` (keeps all rows)
+* `filter(df, c>5)` finds all rows where the value in column `c` is greater than 5 (keeps all columns)
+* `filter(df, c==5)` finds all rows where the value in column `c` is exactly equal to 5 (keeps all columns)
+* `filter(df, c>5 & d<=10)` finds all rows where the value in column `c` is greater than 5 **and** the value in column `d` is less than or equal to 10 (keeps all columns)
+* `filter(df, c=="some_name")` finds all rows where the value in column `c` is exactly "some_name"
+* `filter(df, str_detect(c, "name"))` finds all rows where the value in column `c` contains "name" (things like "some_name", "other_name", as well as "name")
+
+You can usually combine commands any way you like, using parentheses.  As long as the output of the inner command is appropriate input for the outer command, things will probably work fine.  Some examples:
+
+* `plot(df$c, df$d)` plots columns of the dataframe named `df`, putting the column named `c` on the x axis and the column named `d` on the y axis
+* `hist(log(v))` plots a histogram of the natural log of the values in the vector named `v`
+
+
+## Calculate Differential Expression
+
+### Introduction
+
+Usually when you do an RNA-seq experiment, you want to find out what genes behave differently in different samples.  This is called "differential expression", because you're looking for *differences* in gene *expression*.
+
+`DESeq2` is a program for calculating differential expression (the DE in DESeq2 stands for differential expression).  It starts with the read count data (for example, HTSeq files) for *all* the samples, then does a bunch of math to figure out which genes are the most different between samples.
+
+Setting up DESeq2 can be a little complicated, depending what your input data looks like.  For this tutorial, we've gone ahead and run the commands to load the data in the background, so that you can focus on exploring the results and looking for patterns in the data.  The commands we used to set up and run DESeq2 are shown below, in case you're curious.  We're using HTSeq files, which are easy to load into DESeq2.
+
+```{r setup-DESeq2, echo=TRUE, eval=FALSE, message=FALSE}
+midgut_tsv <- read.table("https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/data/midgut.tsv", header=TRUE)
+midgut <- DESeqDataSetFromHTSeqCount(midgut_tsv, "data/", design = ~condition)
+```
+
+### Running DESeq2
+
+Once the data is properly loaded into DESeq2, you use the `DEseq()` command to calculate differential expression.  This command normalizes the data and runs a bunch of statistical tests comparing gene expression across all the samples.  In the previous commands, we loaded the data into a special DESeq2 object (a `DESeqDataObject`) and we named it `midgut`.  The `DESeq()` command will only work on a DESeqDataObject, not on normal dataframes.
+
+Because the `DESeqDataObject` is a special, complex structure containing many dataframes, some of the commands for running analyses with a DESeqDataObject can look a little funny if you haven't seen them before. Several commands are run like this:
+
+`dds <- someCommand(dds)` for a DESeqDataObject named dds
+
+A command like this will usually store the results of `someCommand(dds)` in one of the many matrices and dataframes within `dds`.
+
+`DESeq()` may take a little while as R carries out thousands of calculations.  To run the `DESeq()` command on our `DESeqDataObject` named `midgut`, we run:
+```{r run-DESeq2, echo=TRUE, eval=FALSE, message=FALSE}
+midgut <- DESeq(midgut)
+```
+
+If we try to print out midgut, it will give us some information about what's inside this structure:
+
+```{r view-DESeq2, echo=TRUE,}
+midgut
+```
+
+This printout tells a couple of important things that we can use as a sanity check:
+
++ This is a DESeqDataSet.  Good, that's what we expected.
++ Its dimensions are 17559 by 30.  These numbers make sense, because we had 17559 genes and 30 samples.
++ `rowData names` is filled calculations (in this case, 54 different calculations), starting with "baseMean" and "baseVar".  This means that the `DESeq()` command has been run, and it has attempted to calculate these statistics (you will learn more about these statistics in the next section).
+    + If this line said `rowData names(0):`, it would mean the DESeq command had not yet been run
+
+### Try it yourself
+
+1) Use the codeblock below to run the `DESeq()` command on `midgut_tiny`.
+
+* `midgut_tiny` is a smaller version of the midgut dataset that only has **100 genes and 4 samples**, so the `DESeq()` command should run quickly.  The output won't be very useful since we ignored so much data, but it will let you try out the `DESeq()` command quickly.
+
+2) Print out a summary of the resulting object.
+
++ Is it a `DESeqDataSet`?
++ Does it have the expected dimensions?
++ Is `rowData names` filled calculations, or does it say `rowData names(0):`?
+    + `rowData names` will have fewer than 54 calculations since we have fewer samples in this dataset, so there are fewer comparisons to make.
+
+```{r run-DESeq2-exercise, exercise=TRUE}
+```
+
+### Summary
+
+That's it!  DESeq2 has calculated differential expression for the samples.  Now you need to explore the data.  The next few sections will teach you how to explore the results from DESeq2 and start trying to figure out what they mean biologically.  DESeq2 just reports statistical calculations, giving each gene scores for how different it is between samples.  It's the job of a scientist to look through that information and decide what it **means**.
+
+## Extract and Reformat DESeq2 Results
+
+When carrying out data analysis, we often have to reformat the output of a program in order to more easily work with the results or to use it as input to the next step in the analysis.  The following section walks you through extracting and reformatting DESeq2 results.
+
+This section requires some familiarity with standard R commands.  If you find this section frustrating or uninteresting, you can skip it for now and move on to the next section to actually start exploring the data.  But learning to reformat data is an essential part of bioinformatics - chances are your data will not be formatted exactly the way you want it and you'll have to do some reformatting of your own.
+
+### View results from DESeq2 
+
+We have stored the results from DESeq2 in the `DESeqDataSet` named `midgut`, along with the read count data that was there before we ran the `DESeq()` command.  This is a special object made by DESeq2, with lots of dataframes inside it.  You can access the dataframe of results for a particular comparison using the `results()` command.  Here's an example for getting the results comparing samples from region "a1" to region "p1".  
+
+```{r, echo=TRUE}
+results(midgut, contrast = c("condition", "a1", "p1") )
+```
+
+### Reformat DESeq2 results into a more convenient object
+
+DEseq2 results are stored in a `DataFrame` rather than an normal `data.frame` (yes, these are different things in R).  You can find out what kind of object something is using the `class()` command:
+
+```{r, echo=TRUE}
+class( results(midgut, contrast = c("condition", "a1", "p1")) )
+```
+
+A `DataFrame` can store extra information (metadata) about the columns - in this case you can see it prints out information about what samples were compared to each other.  A DataFrame behaves similarly to a standard `data.frame` and you can use a lot of the same commands to explore it, however, it doesn't always play nicely with other R packages (for example, as I'm writing this tutorial, DataFrames don't show up as nice tables in learnr or RNotebooks).  If we leave our results in a DataFrame, we won't be able to use the convenient `dplyr` commands, like `filter()` and `arrange()`.  I find it easiest to convert DESeq2 results into a standard data.frame using the `as.data.frame()` command, and then store those results as a new object.  In the example below, we have stored the results in a data.frame named `a1_vs_p1`, since it contains the data comparing region a1 to region p1.  Afterwards, we use the `class()` command to check that it really is a `data.frame`, and we use the `head()` command to look at the first few rows of the object we just made.
+
+```{r, echo=TRUE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+class(a1_vs_p1)
+head(a1_vs_p1)
+```
+
+Now it prints out as a nice table in learnr and RNotebooks, and it will work well with other R packages.
+
+### Add a GeneID column
+
+As a final step, because some packages don't work well with rownames, it can be useful to put the gene identifiers as their own column in the `data.frame`, rather than just having them as the rownames.  We can do this in two steps:
+
+1. Use the `data.frame()` command make a new `data.frame` where the first column is the rownames of `a1_vs_p1`, and the remaining columns are the columns of `a1_vs_p1`.  Store this new `data.frame` in a variable.  In the example below, we are storing it in the variable `a1_vs_p`, overwriting whatever was there before.  This is okay, because we don't want the old `a1_vs_p1`, we want this new, better version.  Essentially, we are saying "the new `a1_vs_p1` should be the rownames of the old `a1_vs_p1` plus all the columns of the old `a1_vs_p1`".
+
+```{r, echo=TRUE, eval=FALSE}
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+head(a1_vs_p1)
+```
+
+```{r, echo=FALSE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+head(a1_vs_p1)
+```
+
+This is close!  But we've got a weird column name for that first column.  Step 2 fixes the column names using a similar strategy:
+
+2. Use the `colnames()` command to replace the column names with "GeneID" plus the current column names (leaving off the first weird one).
+
+```{r, echo=TRUE, eval=FALSE}
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+head(a1_vs_p1)
+```
+
+```{r, echo=FALSE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+head(a1_vs_p1)
+```
+
+### Summary of reformatting DESeq2 results
+
+1. First, use the `results()` command to get the relevant data.  The `results()` command needs to know which samples you want to compare.
+2. Reformat the results to make them more useful using the `as.data.frame()` command.  You can do this in a single command along with the `results()` command if you want, as in the example code.  Store the reformated data.frame in a new variable, and give it a descriptive name so you can remember what it is.
+  + In the example code, we named our dataframe `a1_vs_p1`, since it contains the data comparing region a1 to region p1.
+3. Add a new column that contains all the gene names, and rename the columns appropriately.
+
+Here's an example of code for getting the data comparing samples from region "a1" to region "p1".  As the last two commands, we use the `class()` command to check that it really is a `data.frame` and the `head()` command to view the top of our new `data.frame`.
+
+```{r, echo=TRUE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+class(a1_vs_p1)
+head(a1_vs_p1)
+```
+
+### Try it yourself
+
+Use the codeblock below to extract results comparing the "a1" and "Cu" regions and convert them into a `data.frame`.  You can use the commands above as a starting place.  Print out your final `data.frame` using the `head()` command.
+
+* Is it a `data.frame`?  (Use the `class()` command)
+* Does it look like you expect?
+* Does it have all the columns you want it to have, and no extras?
+* Are the column names correct?
+
+```{r reformat-deseq-results, exercise=TRUE}
+```
+
+Whew!  All done.  Now we can get back to science!
+
+## Explore DESeq2 Results
+
+### Extract and reformat results
+
+This code extracts and reformats the DESeq2 results comparing region "a1" with region "p1" and stores the results in a dataframe named `a1_vs_p1`.  The previous section explained how this code works.  If you skipped that section, you can copy this code and use it to extract and reformat results, just replace every `a1` and `p1` with whatever regions you'd like to compare.
+
+```{r, echo=TRUE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+a1_vs_p1
+```
+
+Each row in this dataframe is a gene, and the columns contain a bunch of information about the statistics that DESeq2 calculated.  This data frame has a lot of numbers in it, but there are three columns that we're interested in:
+
+- **baseMean**:  The mean expression level for this gene across all samples
+- **log2FoldChange**:  How much higher this gene is expressed in the first region ("a1") than in the second region ("p1").  A **positive number** means the gene is **higher in a1 than in p1**, and a **negative number** means the gene is **lower in a1 than in p1**
+- **padj**: (If this variable doesn't show up on your screen, click the little arrow at the top right of the table, next to the column names.  This will let you scroll through all the columns if they don't fit on your screen).  This is the "adjusted p-value" for the gene - basically, a score that helps you decide whether or not this gene is actually different between the regions (we use the "adjusted p-value" rather than a standard p-value because we are comparing many different genes).  A **high score** means the gene is probably **not different** between the samples.  A **low score** means that it probably is a **real difference**, and not a fluke in the data.  Scientists often use a score of 0.05 as a cutoff, so genes with a `padj` score of less than 0.05 would be considered "significantly different" between these samples.  This is important because measurements are never perfect, and we have to decide whether the differences we see are because the samples are actually different, or are just errors in measurement.
+
+```{r intro-deseq-results}
+quiz(caption = "What's in this dataframe?",
+  question("Out of the first 10 genes shown above, which gene has the highest average gene expression?",
+    answer("FBgn0000003"),
+    answer("FBgn0000008"),
+    answer("FBgn0000014"),
+    answer("FBgn0000015"),
+    answer("FBgn0000017"),
+    answer("FBgn0000018"),
+    answer("FBgn0000022"),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028"),
+    answer("FBgn0000032"),
+    allow_retry=TRUE
+    ),
+  question("Out of the first 10 genes shown above, which gene(s) are more highly expressed in a1 than p1?  HINT: There are four - you must select all four to get the correct answer.",
+    answer("FBgn0000003", correct=TRUE, message="Correct, but this is not the only gene expressed more highly in a1"),
+    answer("FBgn0000008"),
+    answer("FBgn0000014"),
+    answer("FBgn0000015"),
+    answer("FBgn0000017"),
+    answer("FBgn0000018"),
+    answer("FBgn0000022", correct=TRUE),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028", correct=TRUE),
+    answer("FBgn0000032"),
+   allow_retry=TRUE
+   ),
+  question('Out of the first 10 genes shown above, which gene(s) are likely to "really" be different between regions a1 and p1, if we use a padj cutoff of 0.05?  HINT: There are two - you must select both to get the correct answer.',
+    answer("FBgn0000003"),
+    answer("FBgn0000008"),
+    answer("FBgn0000014", correct=TRUE),
+    answer("FBgn0000015"),
+    answer("FBgn0000017"),
+    answer("FBgn0000018"),
+    answer("FBgn0000022"),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028"),
+    answer("FBgn0000032"),
+   allow_retry=TRUE
+   )
+)
+```
+
+### What does "NA" mean?
+For some genes you will see a value of "NA" instead of a number.  NA stands for "not available".  This means that for some reason R does not have a value for this gene.  This might happen, for example, if a gene is not expressed at all in a particular set of samples - R can't calculate the `log2FoldChange` because it would involve dividing by zero.  Likewise, sometime R does not calculate a `padj` value because the preliminary calculations show that it's not worth it - it's already clear that the gene won't have a good `padj` score.
+
+### Try it yourself: look at a different pair of samples
+
+Use the box below to look at a comparison between region "a1" and region "Cu".  You can copy the commands from the box above (replace "a1" and "p1" with the samples you want to compare).
+
+```{r deseq-results, exercise=TRUE}
+```
+
+```{r intro-deseq-results-2}
+quiz(caption = "Examine another comparison between regions",
+   question("Out of the first 10 genes shown above, which gene has the highest average gene expression?",
+    answer("FBgn0000003"),
+    answer("FBgn0000008"),
+    answer("FBgn0000014"),
+    answer("FBgn0000015"),
+    answer("FBgn0000017"),
+    answer("FBgn0000018"),
+    answer("FBgn0000022", message="Pay attention to the exponent (scientific notation)"),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028"),
+    answer("FBgn0000032"),
+    allow_retry=TRUE
+   ),
+  question("Are these values the same or different than the gene expression values in the comparison between regions a1 and p1",
+   answer("Same", correct=TRUE, message = "The baseMean is the average score across all samples, so it will be the same no matter what samples we're looking at"),
+   answer("Different"),
+   allow_retry=TRUE
+   ),
+  question("Out of the first 10 genes, which gene are more highly expressed in a1 than Cu?  HINT: There are four - you must select all four to get the correct answer.",
+    answer("FBgn0000003", correct=TRUE),
+    answer("FBgn0000008", correct=TRUE),
+    answer("FBgn0000014"),
+    answer("FBgn0000015"),
+    answer("FBgn0000017"),
+    answer("FBgn0000018"),
+    answer("FBgn0000022"),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028", correct=TRUE),
+    answer("FBgn0000032"),
+    allow_retry=TRUE
+   ),
+  question("Are these values the same or different than the log2FoldChange values in the comparison between regions a1 and p1?",
+   answer("Same"),
+   answer("Different", correct = TRUE, message="The log2FoldChange describes the difference between the two specific samples you chose to look at using the `results()` command"),
+    allow_retry=TRUE
+   ),
+  question('Out of the first 10 genes shown above, which gene(s) are likely to "really" be different between regions a1 and Cu, if we use a padj cutoff of 0.05?  HINT: There are four - you must select all four to get the correct answer.',
+    answer("FBgn0000003"),
+    answer("FBgn0000008", correct=TRUE),
+    answer("FBgn0000014", correct=TRUE),
+    answer("FBgn0000015"),
+    answer("FBgn0000017", correct=TRUE),
+    answer("FBgn0000018"),
+    answer("FBgn0000022"),
+    answer("FBgn0000024", correct=TRUE),
+    answer("FBgn0000028"),
+    answer("FBgn0000032"),
+   allow_retry=TRUE
+   ),
+    question("Are these values the same or different than the padj values in the comparison between regions a1 and p1?",
+   answer("Same"),
+   answer("Different", correct = TRUE, "The padj describes the difference between the two specific samples you chose to look at using the `results()` command"),
+   allow_retry=TRUE
+   )
+)
+```
+
+## Results for a Single Gene
+
+The results command gives information about *all* genes.  That's a lot of data!  We can use some R commands to focus on smaller sets of those genes that we think are interesting.  This can be particularly useful for quality control - look up a few genes that you know about from previous research (for example, marker genes or well-studied genes) and see if they behave how you expect.
+
+To look up a particular gene that you're interested in, you can select it by name using the dpylr `filter()` command.  It's important that the name you use *exactly matches* the name of the gene in the results dataframe.  R isn't like Google, it can't guess what you meant if you spell it wrong or even capitalize it differently.  The following code finds the gene "FBgn0000251" in the results for a1 vs. p1.  The first three commands are just extracting and reformatting the a1 vs. p1 results for all genes, like we practiced earlier.  The filter command is looking through the GeneID column for any thing that exactly matches "FBgn0000251".  Note that we stored the result in a new variable, named `gene251`, so we can easily get this gene back whenever we want it.
+
+```{r filter-by-name-example, echo=TRUE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+
+gene251 <- filter(a1_vs_p1, GeneID=="FBgn0000251")
+gene251
+```
+
+```{r filter-by-name-quiz}
+quiz(caption = "Looking at a specific gene",
+   question("Is this gene expressed more highly in region a1 or p1?",
+   answer("higher in a1"),
+   answer("higher in p1", correct=TRUE),
+   allow_retry=TRUE
+   ),
+  question("Is this difference significant at a padj value of 0.05?  In other words, is this difference 'real' or is it probably a fluke?",
+   answer("real", correct=TRUE),
+   answer("probably a fluke"),
+   allow_retry=TRUE
+   )
+)
+```
+
+Use the box below to look at FBgn0000251 and compare its expression between the a1 and Cu regions.
+
+```{r filter-by-name-practice, exercise=TRUE}
+```
+
+```{r filter-by-name-quiz-2}
+quiz(caption = "Looking at a specific gene",
+   question("Is this gene expressed more highly in region a1 or Cu?",
+   answer("higher in a1", correct=TRUE),
+   answer("higher in Cu"),
+   allow_retry=TRUE
+   ),
+  question("Is this difference significant at a padj value of 0.05?  In other words, is this difference 'real' or is it probably a fluke?",
+   answer("real"),
+   answer("probably a fluke", correct=TRUE),
+   allow_retry=TRUE
+   )
+)
+```
+
+### A practical example of Quality Control: Make a Plan
+
+Recall the *lab* gene we discussed at the beginning of the tutorial?  This gene was actually previously known to function in the Cu region.
+
+> "The labial (lab) gene encodes a homeobox transcription factor that is only expressed in the copper cell region, where it is required for copper cell differentiation (Panganiban et al., 1990; Hoppler and Bienz, 1994; Dubreuil et al., 2001; Strand and Micchelli, 2011)."
+>
+> *Marianes and Spradling, 2013*
+
+Let's check for cross-contamination in the data.  Dissecting fly midguts is hard!  If the dissection went well, we would expect to see higher expression of the *lab* gene in the Cu region than in other regions.  If the dissection was not very successful, we might expect to see high expression of the *lab* gene other regions, especially the regions *next to* the Cu region.
+
+Let's compare *lab* gene expression in the Cu region to the regions next to the Cu region.
+
+![Figure 2A](https://raw.githubusercontent.com/C-MOOR/rnaseq/master/assets/images/elife-00886-fig2A.jpg){ width=100% }
+
+```{r lab-gene-qc-plan-quiz}
+question("Which regions are next to the Cu region?  You must select two to get the correct answer.",
+  answer("a1"),
+  answer("a2_3", correct=TRUE),
+  answer("Cu"),
+  answer("LFCFe", correct=TRUE),
+  answer("Fe"),
+  answer("p1"),
+  answer("p2_4"),
+  allow_retry=TRUE
+)
+```
+
+### A practical example of Quality Control: Check the Data
+
+Use the box below to look at the *lab* gene (FBgn0002522) and compare its expression between the a1 and Cu regions.
+
+```{r lab-gene-qc-practice, exercise=TRUE}
+```
+
+```{r lab-gene-qc-quiz}
+quiz(caption = "Looking for cross-contamination with the lab gene",
+   question("Is the lab gene expressed more highly in region 2_3 or Cu?",
+   answer("higher in a2_3"),
+   answer("higher in Cu", correct=TRUE),
+   allow_retry=TRUE
+   ),
+  question("Is this difference significant? At what significance level?  You may choose more than one answer (for example, if it is significant at a padj value of .01, then it is also significant at higher values like 0.05",
+   answer("Not significant"),
+   answer("Significant at p < 0.05", correct=TRUE),
+   answer("Significant at p < 0.01", correct=TRUE),
+   answer("Significant at p < 0.001", correct=TRUE),
+   allow_retry=TRUE
+   ),
+  question("Is the lab gene expressed more highly in region LFCFe or Cu?",
+   answer("higher in LFCFe"),
+   answer("higher in Cu", correct=TRUE),
+   allow_retry=TRUE
+   ),
+  question("Is this difference significant? At what significance level?  You may choose more than one answer (for example, if it is significant at a padj value of .01, then it is also significant at higher values like 0.05",
+   answer("Not significant"),
+   answer("Significant at p < 0.05", correct=TRUE),
+   answer("Significant at p < 0.01"),
+   answer("Significant at p < 0.001"),
+   allow_retry=TRUE
+   )
+)
+```
+
+### A practical example of Quality Control: Conclusions
+
+In the paper, Marianes and Spradling argue that this is evidence for good quality data:
+
+1. The high expression of *lab* in the Cu region indicates that their samples are not cross-contaminating each other during dissection.
+2. The consistency with previous research (showing *lab* expression in the Cu region) suggests that the RNA-seq data is capturing similar, biologically relevant information.
+
+
+> "The RNAseq data showed that labial reads were detected only within the middle midgut in experiments that divided the midgut into anterior (A1, A2 and A3), middle (Cu, LFC and Fe) or posterior (P1, P2, P3 and P4) sections. Revealingly, lab fpkm was 40–100 times higher in isolated Cu region RNA than in any other adult midgut region (Figure 2D). All seven of the midgut segments we were able to isolate showed highly specific gene expression...This high specificity proves that cross-contamination was minimal and that gene expression boundaries correspond to the regional boundaries used in tissue isolation, while the correspondence of the RNAseq data to previous studies of gene expression validates the reliability of this large new body of information."
+>
+> *Marianes and Spradling, 2013*
+
+#### Thought Questions:
+
+1. Do you agree with Marianes and Spradling?  Is this good evidence against cross-contamination between samples?
+2. What other genes would be interesting to examine individually?
+
+## Lists of Interesting Genes
+
+While it's useful to be able to look up particular genes we're interested in, it's also valuable to get a list of all the genes that are different between two samples.  This lets us discover genes that we never would have thought to check by name.
+
+### Get a list of genes that have good padj scores
+
+The first thing we need to do is to pick out all the genes that the computer thinks are "really" different between the two samples - those with a padj score smaller than our cutoff.  Remember, a good padj score is a small number.  This means that there is a very small chance that the differences we see between samples are just an accident.
+
+A cutoff of 0.05 or 0.10 is often a good place to start.  We can get a list of these genes using the dplyr `filter()` command, similar to the way we pulled out single genes by name.  The following code finds only the genes that have a padj score of less than or equal to 0.05, stores the results in a new dataframe named sig_genes.  (This is an abbreviation for "significantly different genes", you could name it whatever you like).  
+
+```{r filter-by-padj-example, echo=TRUE}
+a1_vs_p1 <- as.data.frame(results(midgut, contrast = c("condition", "a1", "p1") ))
+a1_vs_p1 <- data.frame(rownames(a1_vs_p1), a1_vs_p1)
+colnames(a1_vs_p1) <- c("GeneID", colnames(a1_vs_p1)[-1])
+
+sig_genes <- filter(a1_vs_p1, padj <= 0.05)
+head(sig_genes)
+```
+
+We can use the `dim()` command to find out how big our dataframe of significant genes is:
+
+```{r, echo=TRUE}
+dim(sig_genes)
+```
+
+```{r significantly-different-genes-quiz}
+quiz(caption = "Looking at a significantly different genes",
+  question("What percentage of all the fly genes made it onto this list?  Remember, we started out with 17559 genes.",
+    answer("Less than 1%"),
+    answer("About 2%"),
+    answer("About 14%", correct=TRUE),
+    answer("About 27%"),
+    allow_retry=TRUE
+   )
+)
+```
+
+###  Choosing a padj cutoff
+
+Often, a couple hundred to a couple thousand genes is a pretty comfortable number of genes to work with, it will let us look for patterns without overwhelming us.  If instead we got a very small number, we might want to loosen our cutoff (raise our minimum padj value).  Or, if we got thousands of genes, we might want to make our cutoff more strict (lower our padj value).  It depends on what we want to do with our list of genes.  If we're examining them by hand we might want a smaller, more certain list.  If we're looking for broad patterns, we might want a bigger list with more errors.
+
+When you pick a padj cutoff, it's important to think about what it means.  In DESeq2, the padj value is the fraction of genes on the list that are probably not "really" different ("False Positives).  If we pick a padj value of 0.05, and we get a list of 100 genes, we expect 95 of those genes to be "real" and (0.05 X 100 = 5) 5 of those genes to be accidents.  If we instead pick a higher padj value of 0.10, then we expect 90 genes to be "real" and (0.10 X 100 = 10) 10 to be accidents.  Likewise, if we picked a very low padj cutoff of 0.001 then we would expect all 100 of the genes to be real (0.001 X 100 = 0.1, so less that 1 gene is expected to be an accident).
+
+We would love to be able to have only "real" genes on the list (by picking a very low padj cutoff), but often we don't have good enough data to be able to do this (if we pick a low enough number that we expect all genes to be real, then very few genes (or maybe no genes) pass the cutoff).  And as we make the cutoff stricter, we end up throwing out a lot of real genes along with the false ones.  As data analysts, we have to decide when it's better to have a smaller list of differentially expressed genes that are more likely to be real, and when it's better to have a bigger list of genes but know that several of them aren't "really" different.
+
+In this case, for a1 vs p1 we actually have quite good data with many significantly different genes.  From our 2492 genes, we expect 0.05 X 2492 ~ 125 of them to be false positives.  Since we have so many genes, it might be a good idea to pick a lower p-value and see how many genes we're left with.
+
+If we try a padj cutoff of 0.01:
+```{r, echo=TRUE}
+sig_01_genes <- filter(a1_vs_p1, padj <= 0.01)
+dim(sig_01_genes)
+```
+In this case, we get 1799 genes, and we expect 0.01 X 1799 = 18 of them to be false positives.  That's a pretty strong list of genes.  We got rid of 125-18 = 107 false genes (yay!).  On the other hand, we also threw out about 600 real genes (boo!)
+
+If we try a stricter cutoff of 0.001:
+```{r, echo=TRUE}
+sig_001_genes <- filter(a1_vs_p1, padj <= 0.001)
+dim(sig_001_genes)
+```
+Now we get 1278 genes and we expect 0.001 X 1278 ~ 1 to be a false positive.  So we've basically gotten rid of all false genes, but we've also thrown out ~half of the real genes as compared to using the 0.05 cutoff.
+
+With this particular dataset, I'd probably pick a cutoff of either 0.05 or 0.01 for further computational analyis.  I think 0.001 throws away too many real genes.
+
+### Try it yourself
+
+Use the box below to find genes that are significantly different between the a1 and Cu regions.
+
+```{r filter-by-padj-practice, exercise=TRUE}
+```
+
+```{r filter-by-padj-pracice-quiz}
+quiz(caption = "Looking at a significantly different genes",
+  question("How many genes are significantly different between the a1 and Cu regions at a padj cutoff of 0.05?",
+    answer("6,631"),
+    answer("3,804"),
+    answer("3,257", correct=TRUE),
+    answer("2,421"),
+    answer("1,803"),
+    allow_retry=TRUE
+   ),
+  question("How many genes are significantly different between the a1 and Cu regions at a padj cutoff of 0.01?",
+    answer("6,631"),
+    answer("3,804"),
+    answer("3,257"),
+    answer("2,421", correct=TRUE),
+    answer("1,803"),
+    allow_retry=TRUE
+  )
+)
+```
+
+## Wrap Up
+
+### Summary
+
+* DESeq2 calculates differential expression and carries out statistical analysis for many different samples.
+* Data in DESeq2 is stored in a `DESeqDataObject`, which is essentially a collection of many dataframes, vectors, and matrices.  This allows data, metadata, and statistics calculated on the data to be stored in a single object.
+* You can access the results of DESeq2's calculations using the `results` command
+* It's often useful to reformat the results into a `data.frame` if you want to pass them to other commands and programs.
+* You can use R and/or dplyr commands to sort through the results and pull out interesting genes for further investigation.
+
+#### Useful R commands
+
++ Run DESeq2 calculations: `my_data <- DESeq(my_data)`
++ Extract results: `results(my_data, contrast = c("condition", "sample_type_1", "sample_type_2") )`
++ Reformat results into a data.frame (including the gene names) and add nice column names
+    + `my_results <- as.data.frame(results(my_data, contrast = c("condition", "sample_type_1", "sample_type_2") ))`
+    + `my_results <- data.frame(rownames(my_results), my_results)`
+    + `colnames(my_results) <- c("GeneID", colnames(my_results)[-1])`
++ Find results for a particular gene by name: `my_gene <- filter(my_results, GeneID=="mygenename")`
++ Find significantly different genes at adjusted p-value 0.05: `sig_genes <- filter(my_results, padj <= 0.05)`
+
+#### What's next?
+
+At this point it would be useful to know something more about these genes, rather than just having FlyBase IDs.  Also, we have so far been restricted to comparing *pairs of regions*, using differential expression analysis.  Other techniques can compare more regions at the same time.  There are several options for next steps:
+
+* Use heatmaps to explore large-scale patterns of gene expression changes across samples
+* Use Gene Set Analysis to look for groups of genes ("Gene Sets") that are corregulated (essentially, they behave similarly) across samples.
+* Plot individual genes or groups of genes of interest across all regions.
+* Use BioMart to access any of several different databases and find data about gene names, functions, homologs, associated diseases, interactions, etc. for these genes
+* Compare gene expression data with other datasets such as ChIP-seq.
+
+#### Additional Resources
+
+Check out our [Resources](https://c-moor.github.io/resource/#rnaseq) page for more resources for learning about RNA-seq.
